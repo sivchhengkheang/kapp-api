@@ -85,7 +85,10 @@ const userStatisticSchema = new mongoose.Schema({
   preferences: {
     favoriteCategory: String,
     preferredDifficulty: String
-  }
+  },
+
+  // Per-game statistics rollup (e.g. koompi_typing, mouse_master, link_number)
+  gameStats: { type: mongoose.Schema.Types.Mixed, default: {} }
 }, { timestamps: true });
 
 userStatisticSchema.index({ 'level.current': -1 });

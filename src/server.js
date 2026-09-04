@@ -46,13 +46,39 @@ import userProgressMouseRouter from './routers/mouse-master/userProgressMouseRou
 import skillBadgeMouseRouter from './routers/mouse-master/skillBadgeMouseRouter.js';
 import leaderboardMouseRouter from './routers/mouse-master/leaderboardMouseRouter.js';
 
+// ── Link Number routers ───────────────────────────────────────────────────────
+import puzzleBoardRouter from './routers/link-number/puzzleBoardRouter.js';
+import gameSessionLinkRouter from './routers/link-number/gameSessionLinkRouter.js';
+import boardProgressRouter from './routers/link-number/boardProgressRouter.js';
+import difficultyProgressionRouter from './routers/link-number/difficultyProgressionRouter.js';
+import dailyChallengeRouterLink from './routers/link-number/dailyChallengeRouter.js';
+import leaderboardLinkRouter from './routers/link-number/leaderboardLinkRouter.js';
+
+// ── KOOMPI Typing routers ───────────────────────────────────────────────────
+import typingUnitRouter from './routers/koompi-typing/typingUnitRouter.js';
+import typingLessonRouter from './routers/koompi-typing/typingLessonRouter.js';
+import lessonContentItemRouter from './routers/koompi-typing/lessonContentItemRouter.js';
+import gameModeTypingRouter from './routers/koompi-typing/gameModeTypingRouter.js';
+import gameSessionTypingRouter from './routers/koompi-typing/gameSessionTypingRouter.js';
+import keystrokeEventRouter from './routers/koompi-typing/keystrokeEventRouter.js';
+import userProgressTypingRouter from './routers/koompi-typing/userProgressTypingRouter.js';
+import userStreakTypingRouter from './routers/koompi-typing/userStreakTypingRouter.js';
+import keyboardHeatmapRouter from './routers/koompi-typing/keyboardHeatmapRouter.js';
+import leaderboardTypingRouter from './routers/koompi-typing/leaderboardTypingRouter.js';
+
 dotenv.config();
 
 const PORT = process.env.PORT || 5050;
 
 const app = express();
 
-app.use(cors());
+const corsOptions = {
+  origin: 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // ── Health check ──────────────────────────────────────────────────────────────
@@ -94,14 +120,34 @@ app.use('/api/dragon-drop/bosses', bossRouterDragon);
 app.use('/api/dragon-drop/leaderboards', leaderboardRouterDragon);
 
 // ── Mouse Master API routes ───────────────────────────────────────────────────
-app.use('/api/mouse-master/categories',  skillCategoryRouter);
-app.use('/api/mouse-master/levels',      mouseLevelRouter);
-app.use('/api/mouse-master/modes',       gameModeMouseRouter);
-app.use('/api/mouse-master/sessions',    gameSessionMouseRouter);
-app.use('/api/mouse-master/attempts',    challengeAttemptMouseRouter);
-app.use('/api/mouse-master/progress',    userProgressMouseRouter);
-app.use('/api/mouse-master/badges',      skillBadgeMouseRouter);
-app.use('/api/mouse-master/leaderboards',leaderboardMouseRouter);
+app.use('/api/mouse-master/categories', skillCategoryRouter);
+app.use('/api/mouse-master/levels', mouseLevelRouter);
+app.use('/api/mouse-master/modes', gameModeMouseRouter);
+app.use('/api/mouse-master/sessions', gameSessionMouseRouter);
+app.use('/api/mouse-master/attempts', challengeAttemptMouseRouter);
+app.use('/api/mouse-master/progress', userProgressMouseRouter);
+app.use('/api/mouse-master/badges', skillBadgeMouseRouter);
+app.use('/api/mouse-master/leaderboards', leaderboardMouseRouter);
+
+// ── Link Number API routes ────────────────────────────────────────────────────
+app.use('/api/link-number/puzzles', puzzleBoardRouter);
+app.use('/api/link-number/sessions', gameSessionLinkRouter);
+app.use('/api/link-number/progress', boardProgressRouter);
+app.use('/api/link-number/difficulty', difficultyProgressionRouter);
+app.use('/api/link-number/daily', dailyChallengeRouterLink);
+app.use('/api/link-number/leaderboards', leaderboardLinkRouter);
+
+// ── KOOMPI Typing API routes ──────────────────────────────────────────────────
+app.use('/api/koompi-typing/units', typingUnitRouter);
+app.use('/api/koompi-typing/lessons', typingLessonRouter);
+app.use('/api/koompi-typing/content-items', lessonContentItemRouter);
+app.use('/api/koompi-typing/modes', gameModeTypingRouter);
+app.use('/api/koompi-typing/sessions', gameSessionTypingRouter);
+app.use('/api/koompi-typing/keystrokes', keystrokeEventRouter);
+app.use('/api/koompi-typing/progress', userProgressTypingRouter);
+app.use('/api/koompi-typing/streaks', userStreakTypingRouter);
+app.use('/api/koompi-typing/heatmap', keyboardHeatmapRouter);
+app.use('/api/koompi-typing/leaderboards', leaderboardTypingRouter);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -109,7 +155,15 @@ app.use((_req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-dbConnection();
-app.listen(PORT, () => {
-  console.log(`✅ Server is running on port ${PORT}`);
-});
+dbConnection()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`✅ Server is running on port http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    // Even if DB fails, we still start the server as per previous behavior
+    app.listen(PORT, () => {
+      console.log(`Server is running on port http://localhost:${PORT} (Database connection failed)`);
+    });
+  });

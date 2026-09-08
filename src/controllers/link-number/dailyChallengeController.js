@@ -1,4 +1,5 @@
 import DailyChallenge from '../../models/link-number/DailyChallenge.js';
+import { get, set, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // Helper: Returns today's UTC date at midnight (for date-keyed lookup)
 const todayUTC = () => {
@@ -12,6 +13,10 @@ const todayUTC = () => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const getTodaysChallenge = async (req, res) => {
   try {
+    const cacheKey = generateKey('link-number', 'daily-today');
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const today = todayUTC();
     const challenge = await DailyChallenge.findOne({ date: today })
       .populate('puzzle.boardId', 'boardNumber title difficulty gridSize grid hints rewards');
@@ -23,7 +28,9 @@ export const getTodaysChallenge = async (req, res) => {
       });
     }
 
-    return res.status(200).json({ success: true, data: challenge });
+    const responseData = { success: true, data: challenge };
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -36,6 +43,10 @@ export const getTodaysChallenge = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const getDailyChallengeHistory = async (req, res) => {
   try {
+    const cacheKey = generateKey('link-number', 'daily-history', req.query);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const { page = 1, limit = 10 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
@@ -51,14 +62,17 @@ export const getDailyChallengeHistory = async (req, res) => {
       DailyChallenge.countDocuments(filter)
     ]);
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       count: data.length,
       total,
       page: Number(page),
       pages: Math.ceil(total / Number(limit)),
       data
-    });
+    };
+
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -70,6 +84,10 @@ export const getDailyChallengeHistory = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const getDailyLeaderboard = async (req, res) => {
   try {
+    const cacheKey = generateKey('link-number', 'daily-leaderboard');
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const today = todayUTC();
     const challenge = await DailyChallenge.findOne({ date: today })
       .select('date challengeNumber title dailyLeaderboard stats');
@@ -81,13 +99,16 @@ export const getDailyLeaderboard = async (req, res) => {
       });
     }
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       date: challenge.date,
       challengeNumber: challenge.challengeNumber,
       leaderboard: challenge.dailyLeaderboard,
       stats: challenge.stats
-    });
+    };
+
+    await set(cacheKey, responseData, TTL.DYNAMIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -101,6 +122,7 @@ export const getDailyLeaderboard = async (req, res) => {
 export const createDailyChallenge = async (req, res) => {
   try {
     const challenge = await DailyChallenge.create(req.body);
+    await delPattern('link-number:daily*');
     return res.status(201).json({ success: true, data: challenge });
   } catch (error) {
     if (error.code === 11000) {

@@ -4,13 +4,17 @@ import ProblemAttempt from '../../models/typing-math/ProblemAttempt.js';
 // Record a single problem attempt during a math session
 export const createProblemAttempt = async (req, res) => {
   try {
-    const { userAccountId, problemId } = req.body;
+    const userAccountId = req.body.userAccountId || req.body.userId;
+    const { problemId } = req.body;
 
     if (!userAccountId || !problemId) {
-      return res.status(400).json({ success: false, message: 'userAccountId and problemId are required.' });
+      return res.status(400).json({ success: false, message: 'userAccountId or userId and problemId are required.' });
     }
 
-    const attempt = await ProblemAttempt.create(req.body);
+    const attempt = await ProblemAttempt.create({
+      ...req.body,
+      userAccountId
+    });
     return res.status(201).json({ success: true, data: attempt });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

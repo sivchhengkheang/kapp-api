@@ -1,9 +1,14 @@
 import jwt from 'jsonwebtoken';
 import UserAccount from '../models/shared/UserAccount.js';
+import { get, set, generateKey, TTL } from '../utils/cache.js';
 
 /**
  * protect — verifies the Bearer access token on protected routes.
  * Attaches { _id, username, email, accountStatus } to req.user.
+ *
+ * User document is cached in Redis for 30 min (TTL.USER) to avoid a DB
+ * query on every single authenticated request. Cache is busted immediately
+ * on logout, ban, or password change.
  */
 export const protect = async (req, res, next) => {
   try {
@@ -29,10 +34,21 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message });
     }
 
-    // Fetch user to make sure account is still active
-    const user = await UserAccount.findById(decoded.userId).select(
-      '_id username email accountStatus'
-    );
+    const cacheKey = generateKey('user', 'auth', decoded.userId);
+
+    // ── Try cache first ──────────────────────────────────────────────────────
+    let user = await get(cacheKey);
+
+    if (!user) {
+      // ── Cache MISS: fetch from MongoDB and cache the result ────────────────
+      user = await UserAccount.findById(decoded.userId)
+        .select('_id username email accountStatus')
+        .lean();
+
+      if (user) {
+        await set(cacheKey, user, TTL.USER);
+      }
+    }
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'User account not found.' });

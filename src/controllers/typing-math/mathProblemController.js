@@ -1,4 +1,5 @@
 import MathProblem from '../../models/typing-math/MathProblem.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // POST /api/typing-math/problems
 // Create a new math problem
@@ -32,8 +33,11 @@ export const getMathProblems = async (req, res) => {
     if (category) filter.category = category;
     if (isActive !== undefined) filter['status.isActive'] = isActive === 'true';
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const cacheKey = generateKey('math', 'problems', operation || '', difficulty || '', category || '', isActive || '', page, limit);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
 
+    const skip = (Number(page) - 1) * Number(limit);
     const [problems, total] = await Promise.all([
       MathProblem.find(filter)
         .sort({ 'difficultyAdjustments.recommendedForLevel': 1 })
@@ -42,13 +46,9 @@ export const getMathProblems = async (req, res) => {
       MathProblem.countDocuments(filter),
     ]);
 
-    return res.status(200).json({
-      success: true,
-      total,
-      page: Number(page),
-      limit: Number(limit),
-      data: problems,
-    });
+    const body = { success: true, total, page: Number(page), limit: Number(limit), data: problems };
+    await set(cacheKey, body, TTL.STATIC);
+    return res.status(200).json(body);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -58,13 +58,18 @@ export const getMathProblems = async (req, res) => {
 // Get a single math problem by document ID
 export const getMathProblemById = async (req, res) => {
   try {
-    const problem = await MathProblem.findById(req.params.id);
+    const cacheKey = generateKey('math', 'problem', req.params.id);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
 
+    const problem = await MathProblem.findById(req.params.id);
     if (!problem) {
       return res.status(404).json({ success: false, message: 'Math problem not found.' });
     }
 
-    return res.status(200).json({ success: true, data: problem });
+    const body = { success: true, data: problem };
+    await set(cacheKey, body, TTL.STATIC);
+    return res.status(200).json(body);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -79,11 +84,11 @@ export const updateMathProblem = async (req, res) => {
       { $set: req.body },
       { returnDocument: 'after', runValidators: true }
     );
-
     if (!problem) {
       return res.status(404).json({ success: false, message: 'Math problem not found.' });
     }
-
+    await del(generateKey('math', 'problem', req.params.id));
+    await delPattern('math:problems:*');
     return res.status(200).json({ success: true, data: problem });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -95,11 +100,11 @@ export const updateMathProblem = async (req, res) => {
 export const deleteMathProblem = async (req, res) => {
   try {
     const problem = await MathProblem.findByIdAndDelete(req.params.id);
-
     if (!problem) {
       return res.status(404).json({ success: false, message: 'Math problem not found.' });
     }
-
+    await del(generateKey('math', 'problem', req.params.id));
+    await delPattern('math:problems:*');
     return res.status(200).json({ success: true, message: 'Math problem deleted.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

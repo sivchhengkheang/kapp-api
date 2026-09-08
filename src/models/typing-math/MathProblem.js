@@ -4,10 +4,10 @@ const mathProblemSchema = new mongoose.Schema({
   problemId: { type: String, required: true, unique: true },
   title: String,
   description: String,
-  operation: { type: String, enum: ['addition', 'subtraction', 'multiplication', 'division', 'fractions', 'decimals', 'mixed'] },
+  operation: { type: String, enum: ['addition', 'subtraction', 'multiplication', 'division', 'fractions', 'decimals', 'mixed', 'algebra', 'percentage', 'exponents', 'geometry'] },
   category: String,
   subcategory: String,
-  difficulty: { type: String, enum: ['beginner', 'easy', 'intermediate', 'hard', 'expert'] },
+  difficulty: { type: String, enum: ['beginner', 'easy', 'medium', 'intermediate', 'hard', 'expert', 'advanced'] },
   problem: {
     operand1: mongoose.Schema.Types.Mixed,
     operand2: mongoose.Schema.Types.Mixed,

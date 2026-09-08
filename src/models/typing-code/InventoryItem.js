@@ -4,7 +4,7 @@ const inventoryItemSchema = new mongoose.Schema({
   name: String,
   slug: { type: String, unique: true },
   description: String,
-  type: { type: String, enum: ['power_up', 'cosmetic'] },
+  type: { type: String, enum: ['power_up', 'cosmetic', 'boost', 'theme', 'avatar', 'item', 'other'] },
   category: String,
   rarity: { type: String, enum: ['common', 'rare', 'epic', 'legendary'] },
   effect: {

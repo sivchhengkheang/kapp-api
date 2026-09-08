@@ -1,17 +1,25 @@
 import LessonContentItem from '../../models/koompi-typing/LessonContentItem.js';
 import TypingLesson from '../../models/koompi-typing/TypingLesson.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // GET /api/koompi-typing/content-items
 // Supports query: ?lessonId=...
 export const getContentItems = async (req, res) => {
   try {
+    const cacheKey = generateKey('typing', 'content-items', req.query);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
+
     const { lessonId, language } = req.query;
     const filter = {};
     if (lessonId) filter.lessonId = lessonId;
     if (language) filter.language = language;
 
     const items = await LessonContentItem.find(filter).sort({ order: 1 });
-    return res.json({ success: true, count: items.length, data: items });
+    const responseData = { success: true, count: items.length, data: items };
+
+    await set(cacheKey, responseData, TTL.STATIC);
+    return res.json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -20,11 +28,18 @@ export const getContentItems = async (req, res) => {
 // GET /api/koompi-typing/content-items/:id
 export const getContentItemById = async (req, res) => {
   try {
+    const cacheKey = generateKey('typing', 'content-item', req.params.id);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
+
     const item = await LessonContentItem.findById(req.params.id);
     if (!item) {
       return res.status(404).json({ success: false, message: 'Content item not found.' });
     }
-    return res.json({ success: true, data: item });
+
+    const responseData = { success: true, data: item };
+    await set(cacheKey, responseData, TTL.STATIC);
+    return res.json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -48,6 +63,7 @@ export const createContentItem = async (req, res) => {
         await TypingLesson.findByIdAndUpdate(lessonId, { contentItemCount: count });
       }
 
+      await delPattern('typing:content-items:*');
       return res.status(201).json({ success: true, count: createdItems.length, data: createdItems });
     }
 
@@ -71,6 +87,7 @@ export const createContentItem = async (req, res) => {
     });
 
     await TypingLesson.findByIdAndUpdate(lessonId, { $inc: { contentItemCount: 1 } });
+    await delPattern('typing:content-items:*');
 
     return res.status(201).json({ success: true, data: item });
   } catch (error) {
@@ -89,6 +106,12 @@ export const updateContentItem = async (req, res) => {
     if (!updated) {
       return res.status(404).json({ success: false, message: 'Content item not found.' });
     }
+
+    await Promise.all([
+      del(generateKey('typing', 'content-item', req.params.id)),
+      delPattern('typing:content-items:*'),
+    ]);
+
     return res.json({ success: true, data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -104,6 +127,11 @@ export const deleteContentItem = async (req, res) => {
     }
 
     await TypingLesson.findByIdAndUpdate(item.lessonId, { $inc: { contentItemCount: -1 } });
+    await Promise.all([
+      del(generateKey('typing', 'content-item', req.params.id)),
+      delPattern('typing:content-items:*'),
+    ]);
+
     return res.json({ success: true, message: 'Content item deleted.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

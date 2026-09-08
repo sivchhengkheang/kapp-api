@@ -6,6 +6,7 @@ import KeyboardHeatmapStat from '../../models/koompi-typing/KeyboardHeatmapStat.
 import UserStatistic from '../../models/shared/UserStatistic.js';
 import UserAchievement from '../../models/shared/UserAchievement.js';
 import Achievement from '../../models/shared/Achievement.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/koompi-typing/sessions
@@ -425,6 +426,10 @@ export const getSessionsByUser = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const getSessionById = async (req, res) => {
   try {
+    const cacheKey = generateKey('session', 'typing', req.params.id);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
+
     const session = await GameSessionTyping.findById(req.params.id)
       .populate('lessonId', 'lessonNumber title targetKeys difficulty xpReward')
       .populate('gameModeId', 'modeKey name')
@@ -434,7 +439,9 @@ export const getSessionById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Session not found.' });
     }
 
-    return res.json({ success: true, data: session });
+    const responseData = { success: true, data: session };
+    await set(cacheKey, responseData, TTL.SESSION);
+    return res.json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -449,6 +456,8 @@ export const deleteSession = async (req, res) => {
     if (!session) {
       return res.status(404).json({ success: false, message: 'Session not found.' });
     }
+
+    await del(generateKey('session', 'typing', req.params.id));
     return res.json({ success: true, message: 'Session deleted.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

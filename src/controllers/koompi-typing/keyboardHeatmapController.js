@@ -1,4 +1,5 @@
 import KeyboardHeatmapStat from '../../models/koompi-typing/KeyboardHeatmapStat.js';
+import { get, set, del, generateKey, TTL } from '../../utils/cache.js';
 
 // GET /api/koompi-typing/heatmap/user/:userId
 export const getHeatmapByUser = async (req, res) => {
@@ -6,23 +7,19 @@ export const getHeatmapByUser = async (req, res) => {
     const { userId } = req.params;
     const { language = 'en' } = req.query;
 
-    const heatmap = await KeyboardHeatmapStat.findOne({
-      userAccountId: userId,
-      language
-    });
+    const cacheKey = generateKey('typing', 'heatmap', userId, language);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const heatmap = await KeyboardHeatmapStat.findOne({ userAccountId: userId, language });
 
     if (!heatmap) {
-      return res.json({
-        success: true,
-        data: {
-          userAccountId: userId,
-          language,
-          keyStats: {}
-        }
-      });
+      return res.json({ success: true, data: { userAccountId: userId, language, keyStats: {} } });
     }
 
-    return res.json({ success: true, data: heatmap });
+    const body = { success: true, data: heatmap };
+    await set(cacheKey, body, TTL.USER_STATS);
+    return res.json(body);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -67,6 +64,7 @@ export const updateHeatmap = async (req, res) => {
     }
 
     await heatmap.save();
+    await del(generateKey('typing', 'heatmap', userId, language));
     return res.json({ success: true, data: heatmap });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

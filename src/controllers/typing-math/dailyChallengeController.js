@@ -1,4 +1,5 @@
 import DailyChallenge from '../../models/typing-math/DailyChallenge.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // POST /api/typing-math/daily-challenges
 // Create a new daily challenge entry
@@ -11,6 +12,7 @@ export const createDailyChallenge = async (req, res) => {
     }
 
     const challenge = await DailyChallenge.create(req.body);
+    await delPattern('math:daily*');
     return res.status(201).json({ success: true, data: challenge });
   } catch (error) {
     if (error.code === 11000) {
@@ -24,6 +26,10 @@ export const createDailyChallenge = async (req, res) => {
 // Get the active daily challenge for today's date
 export const getTodayChallenge = async (req, res) => {
   try {
+    const cacheKey = generateKey('math', 'daily-today');
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
     const endOfDay = new Date();
@@ -38,7 +44,9 @@ export const getTodayChallenge = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No active daily challenge for today.' });
     }
 
-    return res.status(200).json({ success: true, data: challenge });
+    const responseData = { success: true, data: challenge };
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -48,6 +56,10 @@ export const getTodayChallenge = async (req, res) => {
 // List all daily challenges with optional pagination
 export const getDailyChallenges = async (req, res) => {
   try {
+    const cacheKey = generateKey('math', 'daily-list', req.query);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const { isActive, limit = 20, page = 1 } = req.query;
     const filter = {};
     if (isActive !== undefined) filter.isActive = isActive === 'true';
@@ -62,13 +74,16 @@ export const getDailyChallenges = async (req, res) => {
       DailyChallenge.countDocuments(filter),
     ]);
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       total,
       page: Number(page),
       limit: Number(limit),
       data: challenges,
-    });
+    };
+
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -78,6 +93,10 @@ export const getDailyChallenges = async (req, res) => {
 // Get a specific daily challenge by document ID
 export const getDailyChallengeById = async (req, res) => {
   try {
+    const cacheKey = generateKey('math', 'daily', req.params.id);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const challenge = await DailyChallenge.findById(req.params.id)
       .populate('problems', 'problem answer operation difficulty');
 
@@ -85,7 +104,9 @@ export const getDailyChallengeById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Daily challenge not found.' });
     }
 
-    return res.status(200).json({ success: true, data: challenge });
+    const responseData = { success: true, data: challenge };
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -104,6 +125,11 @@ export const updateDailyChallenge = async (req, res) => {
     if (!challenge) {
       return res.status(404).json({ success: false, message: 'Daily challenge not found.' });
     }
+
+    await Promise.all([
+      del(generateKey('math', 'daily', req.params.id)),
+      delPattern('math:daily*'),
+    ]);
 
     return res.status(200).json({ success: true, data: challenge });
   } catch (error) {
@@ -133,6 +159,11 @@ export const addTopScore = async (req, res) => {
     if (!challenge) {
       return res.status(404).json({ success: false, message: 'Daily challenge not found.' });
     }
+
+    await Promise.all([
+      del(generateKey('math', 'daily', req.params.id)),
+      delPattern('math:daily*'),
+    ]);
 
     return res.status(200).json({ success: true, data: challenge });
   } catch (error) {

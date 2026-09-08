@@ -1,12 +1,17 @@
 import LeaderboardTyping from '../../models/koompi-typing/LeaderboardTyping.js';
 import GameSessionTyping from '../../models/koompi-typing/GameSessionTyping.js';
 import UserAccount from '../../models/shared/UserAccount.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // GET /api/koompi-typing/leaderboards
 // Supports query: ?boardType=global|by_language|weekly|friends&language=en|km
 export const getLeaderboard = async (req, res) => {
   try {
     const { boardType = 'global', language } = req.query;
+
+    const cacheKey = generateKey('typing', 'leaderboard', boardType, language || 'all');
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
 
     const filter = { boardType };
     if (boardType === 'by_language' && language) {
@@ -16,18 +21,16 @@ export const getLeaderboard = async (req, res) => {
     const leaderboard = await LeaderboardTyping.findOne(filter).sort({ computedAt: -1 });
 
     if (!leaderboard) {
-      return res.json({
+      const body = {
         success: true,
-        data: {
-          boardType,
-          language: language || null,
-          rankings: [],
-          computedAt: new Date()
-        }
-      });
+        data: { boardType, language: language || null, rankings: [], computedAt: new Date() }
+      };
+      return res.json(body);
     }
 
-    return res.json({ success: true, data: leaderboard });
+    const body = { success: true, data: leaderboard };
+    await set(cacheKey, body, TTL.LEADERBOARD);
+    return res.json(body);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -122,6 +125,9 @@ export const recomputeLeaderboard = async (req, res) => {
       },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
+
+    // Bust leaderboard cache after recompute
+    await delPattern('typing:leaderboard:*');
 
     return res.json({
       success: true,

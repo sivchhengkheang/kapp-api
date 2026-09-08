@@ -1,5 +1,6 @@
 import UserProgressTyping from '../../models/koompi-typing/UserProgressTyping.js';
 import TypingLesson from '../../models/koompi-typing/TypingLesson.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // GET /api/koompi-typing/progress/user/:userId
 export const getProgressByUser = async (req, res) => {
@@ -7,8 +8,11 @@ export const getProgressByUser = async (req, res) => {
     const { userId } = req.params;
     const { unitId } = req.query;
 
-    let filter = { userAccountId: userId };
+    const cacheKey = generateKey('typing', 'progress', userId, unitId || 'all');
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
 
+    let filter = { userAccountId: userId };
     if (unitId) {
       const lessonIds = await TypingLesson.find({ unitId }).distinct('_id');
       filter.lessonId = { $in: lessonIds };
@@ -22,11 +26,9 @@ export const getProgressByUser = async (req, res) => {
       })
       .sort({ updatedAt: -1 });
 
-    return res.json({
-      success: true,
-      count: progressList.length,
-      data: progressList
-    });
+    const body = { success: true, count: progressList.length, data: progressList };
+    await set(cacheKey, body, TTL.USER_STATS);
+    return res.json(body);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -75,6 +77,8 @@ export const updateProgress = async (req, res) => {
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
+    // Bust user progress cache
+    await delPattern(`typing:progress:${userId}:*`);
     return res.json({ success: true, data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

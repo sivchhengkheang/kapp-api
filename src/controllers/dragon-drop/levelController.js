@@ -1,11 +1,19 @@
 import LevelDragon from '../../models/dragon-drop/Level.js';
 import GameSessionDragon from '../../models/dragon-drop/GameSessionDragon.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 export const getLevelByNumber = async (req, res) => {
   try {
+    const cacheKey = generateKey('dragon', 'level', req.params.levelNumber);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
+
     const level = await LevelDragon.findOne({ levelNumber: req.params.levelNumber });
     if (!level) return res.status(404).json({ success: false, message: 'Level not found' });
-    res.status(200).json({ success: true, data: level });
+
+    const body = { success: true, data: level };
+    await set(cacheKey, body, TTL.STATIC);
+    res.status(200).json(body);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -54,6 +62,8 @@ export const submitLevel = async (req, res) => {
 
     if (!session) return res.status(404).json({ success: false, message: 'Session not found' });
 
+    // Bust session cache
+    await del(generateKey('session', 'dragon', sessionId));
     res.status(200).json({ success: true, data: session });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

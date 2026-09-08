@@ -1,10 +1,12 @@
 import Challenge from '../../models/typing-code/Challenge.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // POST /api/typing-code/challenges
 // Create a new code challenge/snippet
 export const createChallenge = async (req, res) => {
   try {
     const challenge = await Challenge.create(req.body);
+    await delPattern('typing-code:challenges:*');
     return res.status(201).json({ success: true, data: challenge });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -15,6 +17,10 @@ export const createChallenge = async (req, res) => {
 // List challenges with optional filters: language, difficulty, category, isPublished, isFeatured
 export const getChallenges = async (req, res) => {
   try {
+    const cacheKey = generateKey('typing-code', 'challenges', req.query);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const { language, difficulty, category, isPublished, isFeatured, limit = 20, page = 1 } = req.query;
 
     const filter = {};
@@ -34,13 +40,16 @@ export const getChallenges = async (req, res) => {
       Challenge.countDocuments(filter),
     ]);
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       total,
       page: Number(page),
       limit: Number(limit),
       data: challenges,
-    });
+    };
+
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -50,13 +59,19 @@ export const getChallenges = async (req, res) => {
 // Get a specific challenge by document ID
 export const getChallengeById = async (req, res) => {
   try {
+    const cacheKey = generateKey('typing-code', 'challenge', req.params.id);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const challenge = await Challenge.findById(req.params.id);
 
     if (!challenge) {
       return res.status(404).json({ success: false, message: 'Challenge not found.' });
     }
 
-    return res.status(200).json({ success: true, data: challenge });
+    const responseData = { success: true, data: challenge };
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -76,6 +91,11 @@ export const updateChallenge = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Challenge not found.' });
     }
 
+    await Promise.all([
+      del(generateKey('typing-code', 'challenge', req.params.id)),
+      delPattern('typing-code:challenges:*'),
+    ]);
+
     return res.status(200).json({ success: true, data: challenge });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -91,6 +111,11 @@ export const deleteChallenge = async (req, res) => {
     if (!challenge) {
       return res.status(404).json({ success: false, message: 'Challenge not found.' });
     }
+
+    await Promise.all([
+      del(generateKey('typing-code', 'challenge', req.params.id)),
+      delPattern('typing-code:challenges:*'),
+    ]);
 
     return res.status(200).json({ success: true, message: 'Challenge deleted.' });
   } catch (error) {
@@ -112,6 +137,11 @@ export const incrementChallengeStats = async (req, res) => {
     if (!challenge) {
       return res.status(404).json({ success: false, message: 'Challenge not found.' });
     }
+
+    await Promise.all([
+      del(generateKey('typing-code', 'challenge', req.params.id)),
+      delPattern('typing-code:challenges:*'),
+    ]);
 
     return res.status(200).json({ success: true, data: challenge });
   } catch (error) {

@@ -1,4 +1,5 @@
 import BoardProgress from '../../models/link-number/BoardProgress.js';
+import { get, set, generateKey, TTL } from '../../utils/cache.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/link-number/progress/user/:userId
@@ -7,6 +8,10 @@ import BoardProgress from '../../models/link-number/BoardProgress.js';
 // ─────────────────────────────────────────────────────────────────────────────
 export const getUserBoardProgress = async (req, res) => {
   try {
+    const cacheKey = generateKey('link-number', 'user-progress', { userId: req.params.userId, ...req.query });
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const { status, difficulty, page = 1, limit = 30 } = req.query;
 
     const filter = { userAccountId: req.params.userId };
@@ -31,7 +36,7 @@ export const getUserBoardProgress = async (req, res) => {
       totalStars: data.reduce((acc, p) => acc + (p.currentStars ?? 0), 0)
     };
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       count: data.length,
       total,
@@ -39,7 +44,10 @@ export const getUserBoardProgress = async (req, res) => {
       pages: Math.ceil(total / Number(limit)),
       summary,
       data
-    });
+    };
+
+    await set(cacheKey, responseData, TTL.USER_DATA);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -52,6 +60,9 @@ export const getUserBoardProgress = async (req, res) => {
 export const getBoardProgressByBoardId = async (req, res) => {
   try {
     const { userId, boardId } = req.params;
+    const cacheKey = generateKey('link-number', 'board-progress', { userId, boardId });
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
 
     const progress = await BoardProgress.findOne({ userAccountId: userId, boardId })
       .populate('boardId', 'boardNumber title difficulty gridSize grid rewards');
@@ -63,7 +74,9 @@ export const getBoardProgressByBoardId = async (req, res) => {
       });
     }
 
-    return res.status(200).json({ success: true, data: progress });
+    const responseData = { success: true, data: progress };
+    await set(cacheKey, responseData, TTL.USER_DATA);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

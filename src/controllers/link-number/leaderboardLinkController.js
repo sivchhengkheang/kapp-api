@@ -1,5 +1,6 @@
 import GameSessionLink from '../../models/link-number/GameSessionLink.js';
 import BoardProgress   from '../../models/link-number/BoardProgress.js';
+import { get, set, generateKey, TTL } from '../../utils/cache.js';
 
 // Helper to build a leaderboard from aggregation
 const buildLeaderboard = async (matchStage, sortStage, limit = 20) => {
@@ -49,6 +50,10 @@ const buildLeaderboard = async (matchStage, sortStage, limit = 20) => {
 export const getGlobalLeaderboard = async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const cacheKey = generateKey('link-number', 'leaderboard', { type: 'global', limit });
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const rankings = await buildLeaderboard(
       { 'result.puzzleSolved': true },
       { totalScore: -1, totalStars: -1 },
@@ -56,7 +61,9 @@ export const getGlobalLeaderboard = async (req, res) => {
     );
 
     const ranked = rankings.map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-    return res.status(200).json({ success: true, type: 'global', count: ranked.length, data: ranked });
+    const responseData = { success: true, type: 'global', count: ranked.length, data: ranked };
+    await set(cacheKey, responseData, TTL.DYNAMIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -70,6 +77,10 @@ export const getGlobalLeaderboard = async (req, res) => {
 export const getSpeedLeaderboard = async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const cacheKey = generateKey('link-number', 'leaderboard', { type: 'speed', limit });
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const rankings = await buildLeaderboard(
       { 'result.puzzleSolved': true, 'timing.durationSeconds': { $ne: null } },
       { fastestTime: 1, averageTime: 1 },
@@ -77,7 +88,9 @@ export const getSpeedLeaderboard = async (req, res) => {
     );
 
     const ranked = rankings.map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-    return res.status(200).json({ success: true, type: 'speed', count: ranked.length, data: ranked });
+    const responseData = { success: true, type: 'speed', count: ranked.length, data: ranked };
+    await set(cacheKey, responseData, TTL.DYNAMIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -91,6 +104,10 @@ export const getSpeedLeaderboard = async (req, res) => {
 export const getAccuracyLeaderboard = async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const cacheKey = generateKey('link-number', 'leaderboard', { type: 'accuracy', limit });
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const rankings = await buildLeaderboard(
       { 'result.puzzleSolved': true },
       { perfectRuns: -1, totalStars: -1 },
@@ -98,7 +115,9 @@ export const getAccuracyLeaderboard = async (req, res) => {
     );
 
     const ranked = rankings.map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-    return res.status(200).json({ success: true, type: 'accuracy', count: ranked.length, data: ranked });
+    const responseData = { success: true, type: 'accuracy', count: ranked.length, data: ranked };
+    await set(cacheKey, responseData, TTL.DYNAMIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -119,6 +138,10 @@ export const getByDifficultyLeaderboard = async (req, res) => {
     }
 
     const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const cacheKey = generateKey('link-number', 'leaderboard', { type: 'diff', diff, limit });
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const rankings = await buildLeaderboard(
       { difficulty: diff, 'result.puzzleSolved': true },
       { boardsCompleted: -1, totalStars: -1, averageTime: 1 },
@@ -126,13 +149,15 @@ export const getByDifficultyLeaderboard = async (req, res) => {
     );
 
     const ranked = rankings.map((entry, idx) => ({ ...entry, rank: idx + 1 }));
-    return res.status(200).json({
+    const responseData = {
       success: true,
       type: 'by_difficulty',
       difficulty: diff,
       count: ranked.length,
       data: ranked
-    });
+    };
+    await set(cacheKey, responseData, TTL.DYNAMIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

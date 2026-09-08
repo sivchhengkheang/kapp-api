@@ -1,9 +1,13 @@
 import UserStreakTyping from '../../models/koompi-typing/UserStreakTyping.js';
+import { get, set, del, generateKey, TTL } from '../../utils/cache.js';
 
 // GET /api/koompi-typing/streaks/user/:userId
 export const getStreakByUser = async (req, res) => {
   try {
     const { userId } = req.params;
+    const cacheKey = generateKey('typing', 'streak', userId);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
 
     let streak = await UserStreakTyping.findOne({ userAccountId: userId });
     if (!streak) {
@@ -17,7 +21,9 @@ export const getStreakByUser = async (req, res) => {
       };
     }
 
-    return res.json({ success: true, data: streak });
+    const body = { success: true, data: streak };
+    await set(cacheKey, body, TTL.USER_STATS);
+    return res.json(body);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -41,6 +47,7 @@ export const useStreakFreeze = async (req, res) => {
     streak.streakFreezesAvailable -= 1;
     await streak.save();
 
+    await del(generateKey('typing', 'streak', userId));
     return res.json({
       success: true,
       message: 'Streak freeze consumed successfully.',
@@ -63,6 +70,7 @@ export const addStreakFreeze = async (req, res) => {
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
+    await del(generateKey('typing', 'streak', userId));
     return res.json({ success: true, data: streak });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

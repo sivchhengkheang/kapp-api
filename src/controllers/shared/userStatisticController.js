@@ -1,4 +1,5 @@
 import UserStatistic from '../../models/shared/UserStatistic.js';
+import { get, set, del, generateKey, TTL } from '../../utils/cache.js';
 
 // POST /api/shared/statistics
 // Create a new statistics document for a user
@@ -30,13 +31,19 @@ export const createUserStatistic = async (req, res) => {
 // Get statistics for a user by their account ID
 export const getUserStatistic = async (req, res) => {
   try {
+    const cacheKey = generateKey('shared', 'stats', req.params.userId);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
+
     const statDoc = await UserStatistic.findOne({ userAccountId: req.params.userId });
 
     if (!statDoc) {
       return res.status(404).json({ success: false, message: 'Statistics not found for this user.' });
     }
 
-    return res.status(200).json({ success: true, data: statDoc });
+    const body = { success: true, data: statDoc };
+    await set(cacheKey, body, TTL.USER_STATS);
+    return res.status(200).json(body);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -56,6 +63,7 @@ export const updateUserStatistic = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Statistics not found for this user.' });
     }
 
+    await del(generateKey('shared', 'stats', req.params.userId));
     return res.status(200).json({ success: true, data: statDoc });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -76,6 +84,7 @@ export const incrementUserStatistic = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Statistics not found for this user.' });
     }
 
+    await del(generateKey('shared', 'stats', req.params.userId));
     return res.status(200).json({ success: true, data: statDoc });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -92,6 +101,7 @@ export const deleteUserStatistic = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Statistics not found for this user.' });
     }
 
+    await del(generateKey('shared', 'stats', req.params.userId));
     return res.status(200).json({ success: true, message: 'Statistics document deleted.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

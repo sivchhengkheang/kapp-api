@@ -6,6 +6,7 @@ import { OAuth2Client } from 'google-auth-library';
 import UserAccount from '../../models/shared/UserAccount.js';
 import AuthSession from '../../models/shared/AuthSession.js';
 import LoginHistory from '../../models/shared/LoginHistory.js';
+import { del, generateKey } from '../../utils/cache.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BCRYPT_ROUNDS = 12;
@@ -492,6 +493,9 @@ export const logout = async (req, res) => {
 
     await logEvent(userId, 'logout', meta);
 
+    // ── Bust auth user cache ─────────────────────────────────────────────────
+    await del(generateKey('user', 'auth', String(userId)));
+
     return res.status(200).json({ success: true, message: 'Logged out successfully.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -579,6 +583,9 @@ export const changePassword = async (req, res) => {
         },
       }
     );
+
+    // ── Bust auth user cache ─────────────────────────────────────────────────
+    await del(generateKey('user', 'auth', String(user._id)));
 
     return res.status(200).json({
       success: true,

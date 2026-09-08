@@ -1,4 +1,5 @@
 import DifficultyProgression from '../../models/link-number/DifficultyProgression.js';
+import { get, set, del, generateKey, TTL } from '../../utils/cache.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/link-number/difficulty/user/:userId
@@ -6,6 +7,10 @@ import DifficultyProgression from '../../models/link-number/DifficultyProgressio
 // ─────────────────────────────────────────────────────────────────────────────
 export const getDifficultyProgression = async (req, res) => {
   try {
+    const cacheKey = generateKey('link-number', 'difficulty-progression', req.params.userId);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const progression = await DifficultyProgression.findOne({
       userAccountId: req.params.userId
     });
@@ -17,7 +22,9 @@ export const getDifficultyProgression = async (req, res) => {
       });
     }
 
-    return res.status(200).json({ success: true, data: progression });
+    const responseData = { success: true, data: progression };
+    await set(cacheKey, responseData, TTL.USER_DATA);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -55,6 +62,7 @@ export const initializeDifficultyProgression = async (req, res) => {
       }
     });
 
+    await del(generateKey('link-number', 'difficulty-progression', userAccountId));
     return res.status(201).json({ success: true, data: progression });
   } catch (error) {
     if (error.code === 11000) {

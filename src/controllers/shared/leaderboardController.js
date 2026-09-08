@@ -1,4 +1,5 @@
 import Leaderboard from '../../models/shared/Leaderboard.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // POST /api/shared/leaderboard
 // Create or upsert a leaderboard entry for a user
@@ -19,6 +20,7 @@ export const upsertLeaderboardEntry = async (req, res) => {
       { upsert: true, returnDocument: 'after', runValidators: true }
     );
 
+    await delPattern('shared:leaderboard:*');
     return res.status(200).json({ success: true, data: entry });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -31,6 +33,10 @@ export const getLeaderboard = async (req, res) => {
   try {
     const { boardType, period, category, limit = 50 } = req.query;
 
+    const cacheKey = generateKey('shared', 'leaderboard', boardType || 'all', period || 'all', category || 'all', limit);
+    const cached = await get(cacheKey);
+    if (cached) return res.json(cached);
+
     const filter = {};
     if (boardType) filter.boardType = boardType;
     if (period) filter.period = period;
@@ -40,7 +46,9 @@ export const getLeaderboard = async (req, res) => {
       .sort({ rank: 1 })
       .limit(Number(limit));
 
-    return res.status(200).json({ success: true, count: entries.length, data: entries });
+    const body = { success: true, count: entries.length, data: entries };
+    await set(cacheKey, body, TTL.LEADERBOARD);
+    return res.status(200).json(body);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -93,6 +101,7 @@ export const updateLeaderboardEntry = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Leaderboard entry not found.' });
     }
 
+    await delPattern('shared:leaderboard:*');
     return res.status(200).json({ success: true, data: entry });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -109,6 +118,7 @@ export const deleteLeaderboardEntry = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Leaderboard entry not found.' });
     }
 
+    await delPattern('shared:leaderboard:*');
     return res.status(200).json({ success: true, message: 'Leaderboard entry deleted.' });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

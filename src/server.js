@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { dbConnection } from './config/dbConnection.js';
+import { connectRedis } from './config/redisClient.js';
 
 // ── Auth router ──────────────────────────────────────────────────────────────
 import authRouter from './routers/auth/authRouter.js';
@@ -155,6 +156,9 @@ app.use((_req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
+// Initialise Redis (non-blocking — API starts even if Redis is unavailable)
+connectRedis();
+
 dbConnection()
   .then(() => {
     app.listen(PORT, () => {

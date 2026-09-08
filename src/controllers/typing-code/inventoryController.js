@@ -1,5 +1,6 @@
 import UserInventory from '../../models/typing-code/UserInventory.js';
 import InventoryItem from '../../models/typing-code/InventoryItem.js';
+import { get, set, del, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // POST /api/typing-code/inventory
 // Create a new inventory document for a user
@@ -21,6 +22,7 @@ export const createUserInventory = async (req, res) => {
     }
 
     const inventory = await UserInventory.create(req.body);
+    await del(generateKey('typing-code', 'user-inventory', userId));
     return res.status(201).json({ success: true, data: inventory });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -31,6 +33,10 @@ export const createUserInventory = async (req, res) => {
 // Get a user's full inventory with populated item references
 export const getUserInventory = async (req, res) => {
   try {
+    const cacheKey = generateKey('typing-code', 'user-inventory', req.params.userId);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const inventory = await UserInventory.findOne({ userId: req.params.userId })
       .populate('powerUps.itemId', 'name slug type effect cost rarity')
       .populate('cosmetics.itemId', 'name slug type asset rarity')
@@ -42,7 +48,9 @@ export const getUserInventory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Inventory not found for this user.' });
     }
 
-    return res.status(200).json({ success: true, data: inventory });
+    const responseData = { success: true, data: inventory };
+    await set(cacheKey, responseData, TTL.USER_DATA);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -62,6 +70,7 @@ export const updateUserInventory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Inventory not found for this user.' });
     }
 
+    await del(generateKey('typing-code', 'user-inventory', req.params.userId));
     return res.status(200).json({ success: true, data: inventory });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -95,6 +104,7 @@ export const addItemToInventory = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Inventory not found for this user.' });
     }
 
+    await del(generateKey('typing-code', 'user-inventory', req.params.userId));
     return res.status(200).json({ success: true, data: inventory });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -105,13 +115,20 @@ export const addItemToInventory = async (req, res) => {
 // Get all available inventory items (catalog)
 export const getInventoryItems = async (req, res) => {
   try {
+    const cacheKey = generateKey('typing-code', 'inventory-items', req.query);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const { type, rarity, limit = 50 } = req.query;
     const filter = {};
     if (type) filter.type = type;
     if (rarity) filter.rarity = rarity;
 
     const items = await InventoryItem.find(filter).limit(Number(limit));
-    return res.status(200).json({ success: true, count: items.length, data: items });
+    const responseData = { success: true, count: items.length, data: items };
+
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -121,7 +138,21 @@ export const getInventoryItems = async (req, res) => {
 // Create a new inventory item definition (admin)
 export const createInventoryItem = async (req, res) => {
   try {
-    const item = await InventoryItem.create(req.body);
+    const slug = req.body.slug || req.body.itemId || (req.body.name ? req.body.name.toLowerCase().replace(/\s+/g, '_') : undefined);
+    const itemData = { ...req.body, ...(slug ? { slug } : {}) };
+
+    let item;
+    if (slug) {
+      item = await InventoryItem.findOneAndUpdate(
+        { slug },
+        { $setOnInsert: itemData },
+        { upsert: true, returnDocument: 'after' }
+      );
+    } else {
+      item = await InventoryItem.create(itemData);
+    }
+
+    await delPattern('typing-code:inventory-items:*');
     return res.status(201).json({ success: true, data: item });
   } catch (error) {
     if (error.code === 11000) {

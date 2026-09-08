@@ -1,4 +1,5 @@
 import PuzzleBoard from '../../models/link-number/PuzzleBoard.js';
+import { get, set, delPattern, generateKey, TTL } from '../../utils/cache.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/link-number/puzzles
@@ -7,6 +8,10 @@ import PuzzleBoard from '../../models/link-number/PuzzleBoard.js';
 // ─────────────────────────────────────────────────────────────────────────────
 export const getAllPuzzles = async (req, res) => {
   try {
+    const cacheKey = generateKey('link-number', 'puzzles', req.query);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const { difficulty, category, gridSize, page = 1, limit = 20 } = req.query;
 
     const filter = { 'status.isPublished': true };
@@ -24,14 +29,17 @@ export const getAllPuzzles = async (req, res) => {
       PuzzleBoard.countDocuments(filter)
     ]);
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       count: data.length,
       total,
       page: Number(page),
       pages: Math.ceil(total / Number(limit)),
       data
-    });
+    };
+
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -44,6 +52,10 @@ export const getAllPuzzles = async (req, res) => {
 export const getPuzzlesByDifficulty = async (req, res) => {
   try {
     const { difficulty } = req.params;
+    const cacheKey = generateKey('link-number', 'puzzles-diff', { difficulty, ...req.query });
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const { page = 1, limit = 20 } = req.query;
 
     const allowed = ['easy', 'medium', 'hard', 'expert'];
@@ -63,14 +75,17 @@ export const getPuzzlesByDifficulty = async (req, res) => {
       PuzzleBoard.countDocuments(filter)
     ]);
 
-    return res.status(200).json({
+    const responseData = {
       success: true,
       count: data.length,
       total,
       page: Number(page),
       pages: Math.ceil(total / Number(limit)),
       data
-    });
+    };
+
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -87,6 +102,10 @@ export const getPuzzleByBoardNumber = async (req, res) => {
       return res.status(400).json({ success: false, message: 'boardNumber must be a number.' });
     }
 
+    const cacheKey = generateKey('link-number', 'puzzle', boardNumber);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const board = await PuzzleBoard.findOne({ boardNumber })
       .select('-solution'); // Solution excluded — only returned to verified completions
 
@@ -94,7 +113,9 @@ export const getPuzzleByBoardNumber = async (req, res) => {
       return res.status(404).json({ success: false, message: `Puzzle board #${boardNumber} not found.` });
     }
 
-    return res.status(200).json({ success: true, data: board });
+    const responseData = { success: true, data: board };
+    await set(cacheKey, responseData, TTL.LONG_STATIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -111,6 +132,10 @@ export const getPuzzleStats = async (req, res) => {
       return res.status(400).json({ success: false, message: 'boardNumber must be a number.' });
     }
 
+    const cacheKey = generateKey('link-number', 'puzzle-stats', boardNumber);
+    const cached = await get(cacheKey);
+    if (cached) return res.status(200).json(cached);
+
     const board = await PuzzleBoard.findOne({ boardNumber })
       .select('boardNumber title difficulty gridSize stats');
 
@@ -118,7 +143,9 @@ export const getPuzzleStats = async (req, res) => {
       return res.status(404).json({ success: false, message: `Puzzle board #${boardNumber} not found.` });
     }
 
-    return res.status(200).json({ success: true, data: board });
+    const responseData = { success: true, data: board };
+    await set(cacheKey, responseData, TTL.DYNAMIC);
+    return res.status(200).json(responseData);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -131,6 +158,7 @@ export const getPuzzleStats = async (req, res) => {
 export const createPuzzleBoard = async (req, res) => {
   try {
     const board = await PuzzleBoard.create(req.body);
+    await delPattern('link-number:puzzle*');
     return res.status(201).json({ success: true, data: board });
   } catch (error) {
     if (error.code === 11000) {

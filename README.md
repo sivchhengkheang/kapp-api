@@ -54,7 +54,7 @@ Whenever data is created, modified, or deleted (`POST`, `PUT`, `PATCH`, `DELETE`
    ```
 3. Set up your environment variables by creating a `.env` file in the root directory:
    ```env
-   PORT=3000
+   PORT=5050
    MONGODB_URI=your_mongodb_connection_string
    JWT_SECRET=your_jwt_secret
 

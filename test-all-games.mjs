@@ -494,8 +494,70 @@ async function testLinkNumber() {
   const BASE = '/api/link-number';
   let boardId, sessionId;
 
-  // Puzzles
-  section('1. Puzzle Boards');
+  // Frontend SPEC API (Levels, Save, Progress, Completion, Leaderboard)
+  section('0. Frontend Game SPEC — Levels, Cloud Saves, Progress & Completions');
+
+  // List 100 levels
+  const allLevels = await req('GET', `${BASE}/levels`);
+  log('GET /levels — list all (SPEC)', allLevels.status === 200 && allLevels.body?.count >= 100, `count=${allLevels.body?.count ?? '?'}`);
+
+  // Filter levels by category
+  const starterLevels = await req('GET', `${BASE}/levels?category=Starter+Pack`);
+  log('GET /levels?category=Starter Pack — filter', starterLevels.status === 200 && starterLevels.body?.count > 0, `count=${starterLevels.body?.count ?? '?'}`);
+
+  // Get Level 1 detail
+  const level1 = await req('GET', `${BASE}/levels/1`);
+  log('GET /levels/1 — fetch level 1 (SPEC)', level1.status === 200 && level1.body?.data?.id === 1 && level1.body?.data?.pairs?.length > 0, `size=${level1.body?.data?.size}x${level1.body?.data?.size}, pairs=${level1.body?.data?.pairs?.length}`);
+
+  // Test root alias GET /api/levels/1
+  const rootLevel1 = await req('GET', '/api/levels/1');
+  log('GET /api/levels/1 — root alias (SPEC)', rootLevel1.status === 200 && rootLevel1.body?.data?.id === 1);
+
+  // Cloud Auto-Save active puzzle
+  const savePuzzle = await req('PUT', `${BASE}/save`, {
+    userId: USER_B,
+    levelId: 1,
+    paths: [
+      {
+        value: 1,
+        color: '#ef4444',
+        isComplete: false,
+        points: [{ x: 0, y: 4 }, { x: 1, y: 4 }]
+      }
+    ],
+    elapsedSeconds: 12
+  });
+  log('PUT /save — cloud auto-save (SPEC)', savePuzzle.status === 200 && savePuzzle.body?.success === true);
+
+  // Restore active puzzle
+  const restorePuzzle = await req('GET', `${BASE}/save?userId=${USER_B}`);
+  log('GET /save — restore active puzzle (SPEC)', restorePuzzle.status === 200 && restorePuzzle.body?.data?.levelId === 1 && restorePuzzle.body?.data?.paths?.length === 1);
+
+  // Complete level 1
+  const completeLevel1 = await req('POST', `${BASE}/levels/1/complete`, {
+    userId: USER_B,
+    stars: 3,
+    timeTakenMs: 14250,
+    movesCount: 5,
+    mistakesCount: 0,
+    resetsCount: 0
+  });
+  log('POST /levels/1/complete — submit level completion (SPEC)', completeLevel1.status === 200 && completeLevel1.body?.success === true && completeLevel1.body?.completedLevelIds?.includes(1));
+
+  // Verify User Progress
+  const progress = await req('GET', `${BASE}/progress?userId=${USER_B}`);
+  log('GET /progress — fetch user map progress (SPEC)', progress.status === 200 && progress.body?.data?.completedLevelIds?.includes(1) && progress.body?.data?.totalStars >= 3, `stars=${progress.body?.data?.totalStars}, completed=${progress.body?.data?.completedLevelIds?.length}`);
+
+  // Test root alias GET /api/user/progress
+  const rootProgress = await req('GET', `/api/user/progress?userId=${USER_B}`);
+  log('GET /api/user/progress — root alias (SPEC)', rootProgress.status === 200 && rootProgress.body?.data?.completedLevelIds?.includes(1));
+
+  // Verify Leaderboard for Level 1
+  const levelLeaderboard = await req('GET', `${BASE}/leaderboards/1`);
+  log('GET /leaderboards/1 — per-level speedrun ranking (SPEC)', levelLeaderboard.status === 200 && levelLeaderboard.body?.data?.length > 0, `entries=${levelLeaderboard.body?.count}`);
+
+  // Puzzles (Legacy)
+  section('1. Puzzle Boards (Legacy)');
   const puzzles = await req('GET', `${BASE}/puzzles`);
   log('GET /puzzles — list all', puzzles.status === 200, `count=${puzzles.body?.count ?? '?'}`);
   boardId = puzzles.body?.data?.[0]?._id;

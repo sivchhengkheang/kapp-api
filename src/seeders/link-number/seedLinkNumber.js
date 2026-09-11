@@ -14,6 +14,8 @@ import path from 'path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
+import fs                     from 'fs';
+import Level                   from '../../models/link-number/Level.js';
 import PuzzleBoard             from '../../models/link-number/PuzzleBoard.js';
 import DailyChallenge          from '../../models/link-number/DailyChallenge.js';
 import BoardGenerationTemplate from '../../models/link-number/BoardGenerationTemplate.js';
@@ -308,6 +310,50 @@ async function seed() {
   await mongoose.connect(uri);
   console.log('✅ Connected to MongoDB\n');
 
+  // ── Levels (100 Levels from frontend game/link-number/src/levels.ts) ────────
+  console.log('🎮 Seeding 100 Link Number Levels from frontend...');
+  const levelsFilePath = path.resolve(__dirname, '../../../../game/link-number/src/levels.ts');
+  let levelCount = 0;
+  if (fs.existsSync(levelsFilePath)) {
+    const content = fs.readFileSync(levelsFilePath, 'utf8');
+    const start = content.indexOf('= [') + 2;
+    const end = content.lastIndexOf(']') + 1;
+    const jsStr = content.slice(start, end).trim();
+    const parsedLevels = new Function('return ' + jsStr)();
+
+    const getDifficultyForLevel = (lvl) => {
+      if (lvl.size <= 5) return 'Easy';
+      if (lvl.size === 6) return 'Medium';
+      if (lvl.size === 7) return 'Medium';
+      if (lvl.size === 8) return 'Hard';
+      return 'Expert';
+    };
+
+    const bulkOps = parsedLevels.map((lvl) => ({
+      updateOne: {
+        filter: { id: lvl.id },
+        update: {
+          $set: {
+            id: lvl.id,
+            category: lvl.category,
+            size: lvl.size,
+            difficulty: getDifficultyForLevel(lvl),
+            pairs: lvl.pairs,
+            isActive: true,
+            order: lvl.id
+          }
+        },
+        upsert: true
+      }
+    }));
+
+    await Level.bulkWrite(bulkOps);
+    levelCount = parsedLevels.length;
+    console.log(`   ✓ Successfully seeded ${levelCount} levels into Level collection.\n`);
+  } else {
+    console.warn(`   ⚠️ levels.ts not found at ${levelsFilePath}, skipping level seed.\n`);
+  }
+
   // ── PuzzleBoards ─────────────────────────────────────────────────────────────
   console.log('📋 Seeding PuzzleBoards...');
   const insertedBoards = [];
@@ -364,7 +410,8 @@ async function seed() {
   }
 
   // ── Summary ───────────────────────────────────────────────────────────────────
-  const [boardCount, challengeCount, templateCount] = await Promise.all([
+  const [seededLevelsCount, boardCount, challengeCount, templateCount] = await Promise.all([
+    Level.countDocuments(),
     PuzzleBoard.countDocuments(),
     DailyChallenge.countDocuments(),
     BoardGenerationTemplate.countDocuments()
@@ -372,6 +419,7 @@ async function seed() {
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🎉 Link Number Seed Complete!');
+  console.log(`   Levels (SPEC 100):        ${seededLevelsCount}`);
   console.log(`   PuzzleBoards:             ${boardCount}`);
   console.log(`   DailyChallenges:           ${challengeCount}`);
   console.log(`   BoardGenerationTemplates:  ${templateCount}`);

@@ -25,7 +25,7 @@ const hashToken = (token) =>
 const signAccessToken = (user) =>
   jwt.sign(
     { userId: user._id, username: user.username, email: user.email },
-    process.env.JWT_ACCESS_SECRET,
+    process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'kapp_access_secret_link',
     { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m' }
   );
 
@@ -33,7 +33,7 @@ const signAccessToken = (user) =>
 const signRefreshToken = (user) =>
   jwt.sign(
     { userId: user._id },
-    process.env.JWT_REFRESH_SECRET,
+    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'kapp_refresh_secret_link',
     { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' }
   );
 
@@ -87,16 +87,45 @@ const logEvent = async (userId, eventType, meta, sessionId = null) => {
 // ── POST /api/auth/register ───────────────────────────────────────────────────
 export const register = async (req, res) => {
   try {
-    const { email, username, password } = req.body;
+    const rawEmail = req.body.gmail || req.body.email;
+    const { username, password } = req.body;
 
-    if (!email || !username || !password) {
+    if (!rawEmail || !username || !password) {
       return res.status(400).json({
         success: false,
-        message: 'email, username, and password are required.',
+        message: 'Gmail/email, username, and password are required.',
       });
     }
 
-    if (password.length < 8) {
+    const email = String(rawEmail).trim().toLowerCase();
+    const cleanUsername = String(username).trim();
+
+    // Validate email/gmail format
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter a valid Gmail or email address (e.g. user@gmail.com).',
+      });
+    }
+
+    // Validate username
+    if (cleanUsername.length < 3 || cleanUsername.length > 30) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username must be between 3 and 30 characters.',
+      });
+    }
+
+    const usernameRegex = /^[a-zA-Z0-9_-]+$/;
+    if (!usernameRegex.test(cleanUsername)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username can only contain letters, numbers, underscores, and hyphens.',
+      });
+    }
+
+    if (String(password).length < 8) {
       return res.status(400).json({
         success: false,
         message: 'Password must be at least 8 characters.',
@@ -106,13 +135,13 @@ export const register = async (req, res) => {
     // Check uniqueness
     const existing = await UserAccount.findOne({
       $or: [
-        { email: email.toLowerCase() },
-        { username: username.toLowerCase() },
+        { email },
+        { username: cleanUsername.toLowerCase() },
       ],
     });
 
     if (existing) {
-      const field = existing.email === email.toLowerCase() ? 'email' : 'username';
+      const field = existing.email === email ? 'Gmail/email address' : 'username';
       return res.status(409).json({
         success: false,
         message: `An account with this ${field} already exists.`,
@@ -122,8 +151,8 @@ export const register = async (req, res) => {
     const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
     const user = await UserAccount.create({
-      email: email.toLowerCase(),
-      username: username.toLowerCase(),
+      email,
+      username: cleanUsername,
       password_hash,
     });
 
@@ -142,6 +171,7 @@ export const register = async (req, res) => {
         user: {
           id: user._id,
           email: user.email,
+          gmail: user.email,
           username: user.username,
           accountStatus: user.accountStatus,
           createdAt: user.createdAt,
@@ -150,7 +180,7 @@ export const register = async (req, res) => {
     });
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ success: false, message: 'Email or username already taken.' });
+      return res.status(409).json({ success: false, message: 'Gmail/email or username already taken.' });
     }
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -159,22 +189,24 @@ export const register = async (req, res) => {
 // ── POST /api/auth/login ──────────────────────────────────────────────────────
 export const login = async (req, res) => {
   try {
-    const { identifier, password } = req.body;
-    // `identifier` can be either email or username
+    const rawId = req.body.identifier || req.body.gmail || req.body.email || req.body.username;
+    const { password } = req.body;
 
-    if (!identifier || !password) {
+    if (!rawId || !password) {
       return res.status(400).json({
         success: false,
-        message: 'identifier (email or username) and password are required.',
+        message: 'Gmail/email or username and password are required.',
       });
     }
 
+    const identifier = String(rawId).trim();
     const meta = extractMeta(req);
 
     const user = await UserAccount.findOne({
       $or: [
         { email: identifier.toLowerCase() },
         { username: identifier.toLowerCase() },
+        { username: identifier },
       ],
     });
 
@@ -264,6 +296,7 @@ export const login = async (req, res) => {
         user: {
           id: user._id,
           email: user.email,
+          gmail: user.email,
           username: user.username,
           accountStatus: 'active',
           lastLoginAt: new Date(),

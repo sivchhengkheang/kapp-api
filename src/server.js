@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import os from 'os';
 import { dbConnection } from './config/dbConnection.js';
 import { connectRedis } from './config/redisClient.js';
 
@@ -48,6 +49,9 @@ import skillBadgeMouseRouter from './routers/mouse-master/skillBadgeMouseRouter.
 import leaderboardMouseRouter from './routers/mouse-master/leaderboardMouseRouter.js';
 
 // ── Link Number routers ───────────────────────────────────────────────────────
+import levelRouterLink from './routers/link-number/levelRouter.js';
+import gameSaveRouterLink from './routers/link-number/gameSaveRouter.js';
+import userProgressRouterLink from './routers/link-number/userProgressRouter.js';
 import puzzleBoardRouter from './routers/link-number/puzzleBoardRouter.js';
 import gameSessionLinkRouter from './routers/link-number/gameSessionLinkRouter.js';
 import boardProgressRouter from './routers/link-number/boardProgressRouter.js';
@@ -73,12 +77,59 @@ const PORT = process.env.PORT || 5050;
 
 const app = express();
 
+// ── CORS Configuration ────────────────────────────────────────────────────────
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
+  process.env.CORS_ORIGIN,
+].filter(Boolean);
+
+// Matches localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x, 172.16-31.x.x, and *.local on any port
+const localNetworkPattern =
+  /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|[a-zA-Z0-9-]+\.local)(:\d+)?$/;
+
 const corsOptions = {
-  origin: 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, server-to-server, Postman)
+    if (!origin) return callback(null, true);
+
+    // Allow configured origins or any local network development origin
+    if (
+      allowedOrigins.includes(origin) ||
+      localNetworkPattern.test(origin)
+    ) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS error: Origin ${origin} not allowed`));
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-user-id',
+    'X-User-Id',
+    'x-username',
+    'X-Username',
+    'x-device-type',
+    'X-Device-Type',
+    'x-device-name',
+    'X-Device-Name',
+    'x-refresh-token',
+    'X-Refresh-Token',
+    'x-requested-with',
+    'Accept',
+    'Origin',
+  ],
 };
+
 app.use(cors(corsOptions));
 app.use(express.json());
 
@@ -131,12 +182,25 @@ app.use('/api/mouse-master/badges', skillBadgeMouseRouter);
 app.use('/api/mouse-master/leaderboards', leaderboardMouseRouter);
 
 // ── Link Number API routes ────────────────────────────────────────────────────
+app.use('/api/link-number/levels', levelRouterLink);
+app.use('/api/link-number/save', gameSaveRouterLink);
+app.use('/api/link-number/game/save', gameSaveRouterLink);
+app.use('/api/link-number/progress', userProgressRouterLink);
+app.use('/api/link-number/user/progress', userProgressRouterLink);
+app.use('/api/link-number/leaderboards', leaderboardLinkRouter);
+app.use('/api/link-number/leaderboard', leaderboardLinkRouter);
+
+// SPEC API aliases (/api/user/progress, /api/levels, /api/game/save)
+app.use('/api/levels', levelRouterLink);
+app.use('/api/user/progress', userProgressRouterLink);
+app.use('/api/game/save', gameSaveRouterLink);
+
+// Legacy Link Number routes for backward compatibility
 app.use('/api/link-number/puzzles', puzzleBoardRouter);
 app.use('/api/link-number/sessions', gameSessionLinkRouter);
-app.use('/api/link-number/progress', boardProgressRouter);
+app.use('/api/link-number/board-progress', boardProgressRouter);
 app.use('/api/link-number/difficulty', difficultyProgressionRouter);
 app.use('/api/link-number/daily', dailyChallengeRouterLink);
-app.use('/api/link-number/leaderboards', leaderboardLinkRouter);
 
 // ── KOOMPI Typing API routes ──────────────────────────────────────────────────
 app.use('/api/koompi-typing/units', typingUnitRouter);
@@ -159,15 +223,40 @@ app.use((_req, res) => {
 // Initialise Redis (non-blocking — API starts even if Redis is unavailable)
 connectRedis();
 
+const HOST = process.env.HOST || '0.0.0.0';
+
+function getLocalIpAddresses() {
+  const interfaces = os.networkInterfaces();
+  const addresses = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        addresses.push(iface.address);
+      }
+    }
+  }
+  return addresses;
+}
+
+function logServerReady(isDbConnected = true) {
+  const ips = getLocalIpAddresses();
+  console.log(`\n🚀 Kapp API Server running on port ${PORT}${isDbConnected ? '' : ' (Database connection failed)'}:`);
+  console.log(`   ➜  Local:   http://localhost:${PORT}`);
+  ips.forEach((ip) => {
+    console.log(`   ➜  Network: http://${ip}:${PORT}`);
+  });
+  console.log(`   ➜  Link Number API: http://localhost:${PORT}/api/link-number\n`);
+}
+
 dbConnection()
   .then(() => {
-    app.listen(PORT, () => {
-      console.log(`✅ Server is running on port http://localhost:${PORT}`);
+    app.listen(PORT, HOST, () => {
+      logServerReady(true);
     });
   })
   .catch((err) => {
     // Even if DB fails, we still start the server as per previous behavior
-    app.listen(PORT, () => {
-      console.log(`Server is running on port http://localhost:${PORT} (Database connection failed)`);
+    app.listen(PORT, HOST, () => {
+      logServerReady(false);
     });
   });

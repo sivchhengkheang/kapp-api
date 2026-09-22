@@ -87,23 +87,31 @@ export const getGlobalLeaderboard = async (req, res) => {
       const userIds = topProgress.map((p) => p.userId);
       const [accounts, profiles] = await Promise.all([
         UserAccount.find({ _id: { $in: userIds } }).select('_id username').lean(),
-        UserProfile.find({ userAccountId: { $in: userIds } }).select('userAccountId displayName').lean()
+        UserProfile.find({ userAccountId: { $in: userIds } }).select('userAccountId displayName avatar gender').lean()
       ]);
 
       const usernameMap = new Map();
+      const profileMap = new Map();
       accounts.forEach((acc) => usernameMap.set(String(acc._id), acc.username));
       profiles.forEach((prof) => {
+        profileMap.set(String(prof.userAccountId), prof);
         if (prof.displayName) usernameMap.set(String(prof.userAccountId), prof.displayName);
       });
 
-      ranked = topProgress.map((p, index) => ({
-        rank: index + 1,
-        userId: p.userId,
-        username: usernameMap.get(String(p.userId)) || p.username || 'Player',
-        totalStars: p.totalStars,
-        totalCompleted: p.completedLevelIds?.length || 0,
-        highestUnlockedIndex: p.highestUnlockedIndex
-      }));
+      ranked = topProgress.map((p, index) => {
+        const prof = profileMap.get(String(p.userId));
+        return {
+          rank: index + 1,
+          userId: p.userId,
+          username: prof?.displayName || usernameMap.get(String(p.userId)) || p.username || 'Player',
+          displayName: prof?.displayName || usernameMap.get(String(p.userId)) || p.username || 'Player',
+          avatarUrl: prof?.avatar?.url || null,
+          gender: prof?.gender || null,
+          totalStars: p.totalStars,
+          totalCompleted: p.completedLevelIds?.length || 0,
+          highestUnlockedIndex: p.highestUnlockedIndex
+        };
+      });
 
       await set(cacheKey, ranked, TTL.LEADERBOARD || 120);
     }
@@ -111,7 +119,10 @@ export const getGlobalLeaderboard = async (req, res) => {
     // Attach requesting user's specific global ranking if available
     let currentUserEntry = null;
     if (currentUserId) {
-      const userProgress = await UserProgress.findOne({ userId: currentUserId }).lean();
+      const [userProgress, myProfile] = await Promise.all([
+        UserProgress.findOne({ userId: currentUserId }).lean(),
+        UserProfile.findOne({ userAccountId: currentUserId }).select('displayName avatar gender').lean(),
+      ]);
       if (userProgress && userProgress.totalStars > 0) {
         const higherStarsCount = await UserProgress.countDocuments({
           totalStars: { $gt: userProgress.totalStars }
@@ -119,7 +130,10 @@ export const getGlobalLeaderboard = async (req, res) => {
         currentUserEntry = {
           rank: higherStarsCount + 1,
           userId: userProgress.userId,
-          username: userProgress.username || 'Player',
+          username: myProfile?.displayName || userProgress.username || 'Player',
+          displayName: myProfile?.displayName || userProgress.username || 'Player',
+          avatarUrl: myProfile?.avatar?.url || null,
+          gender: myProfile?.gender || null,
           totalStars: userProgress.totalStars,
           totalCompleted: userProgress.completedLevelIds?.length || 0,
           highestUnlockedIndex: userProgress.highestUnlockedIndex

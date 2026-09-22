@@ -1,4 +1,5 @@
 import UserProgress from '../../models/link-number/UserProgress.js';
+import UserProfile from '../../models/shared/UserProfile.js';
 import { getRequestUserId } from '../../utils/userHelper.js';
 import { get, set, del, generateKey, TTL } from '../../utils/cache.js';
 
@@ -17,14 +18,24 @@ export const getUserProgress = async (req, res) => {
     const cached = await get(cacheKey);
     if (cached) return res.status(200).json(cached);
 
-    let progress = await UserProgress.findOne({ userId }).lean();
+    const [progress, profile] = await Promise.all([
+      UserProgress.findOne({ userId }).lean(),
+      UserProfile.findOne({ userAccountId: userId }).select('displayName gender avatar').lean(),
+    ]);
+
+    const resolvedName = profile?.displayName || progress?.username || req.query?.username || 'Player';
+
     if (!progress) {
       // Return default initial progress without caching empty state in Redis
       return res.status(200).json({
         success: true,
         data: {
           userId,
-          username: req.query?.username || 'Player',
+          username: resolvedName,
+          displayName: resolvedName,
+          gender: profile?.gender || null,
+          avatarUrl: profile?.avatar?.url || null,
+          avatarLocked: profile?.avatar?.avatarLocked ?? false,
           currentLevelIndex: 0,
           highestUnlockedIndex: 0,
           completedLevelIds: [],
@@ -55,7 +66,11 @@ export const getUserProgress = async (req, res) => {
       success: true,
       data: {
         userId: progress.userId,
-        username: progress.username || 'Player',
+        username: resolvedName,
+        displayName: resolvedName,
+        gender: profile?.gender || null,
+        avatarUrl: profile?.avatar?.url || null,
+        avatarLocked: profile?.avatar?.avatarLocked ?? false,
         currentLevelIndex: progress.currentLevelIndex,
         highestUnlockedIndex: progress.highestUnlockedIndex,
         completedLevelIds: completed,
@@ -153,13 +168,20 @@ export const updateUserProgress = async (req, res) => {
       ? (progress.levelStars instanceof Map ? Object.fromEntries(progress.levelStars) : progress.levelStars)
       : {};
 
+    const profile = await UserProfile.findOne({ userAccountId: userId }).select('displayName gender avatar').lean();
+    const resolvedName = profile?.displayName || progress.username || 'Player';
+
     const cacheKey = generateKey('link', 'progress', String(userId));
     const response = {
       success: true,
       message: 'Progress updated successfully.',
       data: {
         userId: progress.userId,
-        username: progress.username || 'Player',
+        username: resolvedName,
+        displayName: resolvedName,
+        gender: profile?.gender || null,
+        avatarUrl: profile?.avatar?.url || null,
+        avatarLocked: profile?.avatar?.avatarLocked ?? false,
         currentLevelIndex: progress.currentLevelIndex,
         highestUnlockedIndex: progress.highestUnlockedIndex,
         completedLevelIds: finalCompleted,

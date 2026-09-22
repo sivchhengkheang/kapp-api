@@ -4,9 +4,11 @@ import crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
 
 import UserAccount from '../../models/shared/UserAccount.js';
+import UserProfile from '../../models/shared/UserProfile.js';
 import AuthSession from '../../models/shared/AuthSession.js';
 import LoginHistory from '../../models/shared/LoginHistory.js';
 import { del, generateKey } from '../../utils/cache.js';
+import { pickAvatarForLetter, buildAvatarUrl } from '../../utils/avatarHelper.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BCRYPT_ROUNDS = 12;
@@ -88,7 +90,7 @@ const logEvent = async (userId, eventType, meta, sessionId = null) => {
 export const register = async (req, res) => {
   try {
     const rawEmail = req.body.gmail || req.body.email;
-    const { username, password } = req.body;
+    const { username, password, gender } = req.body;
 
     if (!rawEmail || !username || !password) {
       return res.status(400).json({
@@ -156,6 +158,25 @@ export const register = async (req, res) => {
       password_hash,
     });
 
+    // ── Auto-assign avatar based on first letter of username and gender ─────────
+    const cleanGender = (gender && ['male', 'female', 'other'].includes(String(gender).toLowerCase().trim()))
+      ? String(gender).toLowerCase().trim()
+      : null;
+
+    const avatarChoice = pickAvatarForLetter(cleanUsername[0], cleanGender);
+    const avatarUrl = buildAvatarUrl(avatarChoice.index, avatarChoice.gender);
+
+    await UserProfile.create({
+      userAccountId: user._id,
+      displayName:   cleanUsername,
+      gender:        cleanGender,
+      avatar: {
+        url:        avatarUrl,
+        uploadedAt: new Date(),
+        source:     'auto',
+      },
+    });
+
     const meta = extractMeta(req);
     const { session, refreshToken } = await createAuthSession(user._id, meta);
     const accessToken = signAccessToken(user);
@@ -173,6 +194,7 @@ export const register = async (req, res) => {
           email: user.email,
           gmail: user.email,
           username: user.username,
+          gender: cleanGender,
           accountStatus: user.accountStatus,
           createdAt: user.createdAt,
         },
@@ -367,6 +389,20 @@ export const googleAuth = async (req, res) => {
           emailVerified: true,
           socialAuth: { google: googleId },
           lastLoginAt: new Date(),
+        });
+
+        // ── Auto-assign avatar: prefer Google picture, else letter-based ────
+        const avatarUrl = picture
+          ? picture
+          : buildAvatarUrl(pickAvatarForLetter(username[0]));
+        await UserProfile.create({
+          userAccountId: user._id,
+          displayName:   name || username,
+          avatar: {
+            url:        avatarUrl,
+            uploadedAt: new Date(),
+            source:     picture ? 'google' : 'auto',
+          },
         });
       }
     } else {

@@ -31,6 +31,8 @@ const buildLeaderboard = async (matchStage, sortStage, limit = 20) => {
       $project: {
         userAccountId: '$_id',
         displayName:   { $ifNull: [{ $arrayElemAt: ['$profile.displayName', 0] }, 'Unknown'] },
+        avatar:        { $ifNull: [{ $arrayElemAt: ['$profile.avatar.url', 0] }, null] },
+        gender:        { $ifNull: [{ $arrayElemAt: ['$profile.gender', 0] }, null] },
         totalScore:    1,
         totalStars:    1,
         boardsCompleted: 1,

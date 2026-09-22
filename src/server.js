@@ -2,6 +2,8 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import os from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { dbConnection } from './config/dbConnection.js';
 import { connectRedis } from './config/redisClient.js';
 
@@ -9,6 +11,7 @@ import { connectRedis } from './config/redisClient.js';
 import authRouter from './routers/auth/authRouter.js';
 
 // ── Shared routers ────────────────────────────────────────────────────────────
+import avatarRouter from './routers/shared/avatarRouter.js';
 import leaderboardRouter from './routers/shared/leaderboardRouter.js';
 import userStatisticRouter from './routers/shared/userStatisticRouter.js';
 import achievementRouter from './routers/shared/achievementRouter.js';
@@ -58,6 +61,7 @@ import boardProgressRouter from './routers/link-number/boardProgressRouter.js';
 import difficultyProgressionRouter from './routers/link-number/difficultyProgressionRouter.js';
 import dailyChallengeRouterLink from './routers/link-number/dailyChallengeRouter.js';
 import leaderboardLinkRouter from './routers/link-number/leaderboardLinkRouter.js';
+import userProfileRouterLink from './routers/link-number/userProfileRouter.js';
 
 // ── KOOMPI Typing routers ───────────────────────────────────────────────────
 import typingUnitRouter from './routers/koompi-typing/typingUnitRouter.js';
@@ -133,6 +137,11 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// ── Static assets — serve avatar images ──────────────────────────────────────
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+app.use('/avatars', express.static(path.join(__dirname, '..', 'public', 'avatars')));
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
   res.json({ success: true, message: 'Kapp Server is running 🚀' });
@@ -142,6 +151,7 @@ app.get('/', (_req, res) => {
 app.use('/api/auth', authRouter);
 
 // ── Shared API routes ─────────────────────────────────────────────────────────
+app.use('/api/avatars', avatarRouter);
 app.use('/api/shared/leaderboard', leaderboardRouter);
 app.use('/api/shared/statistics', userStatisticRouter);
 app.use('/api/shared/achievements', achievementRouter);
@@ -189,6 +199,8 @@ app.use('/api/link-number/progress', userProgressRouterLink);
 app.use('/api/link-number/user/progress', userProgressRouterLink);
 app.use('/api/link-number/leaderboards', leaderboardLinkRouter);
 app.use('/api/link-number/leaderboard', leaderboardLinkRouter);
+app.use('/api/link-number/profile', userProfileRouterLink);
+app.use('/api/link-number/user/profile', userProfileRouterLink);
 
 // SPEC API aliases (/api/user/progress, /api/levels, /api/game/save)
 app.use('/api/levels', levelRouterLink);

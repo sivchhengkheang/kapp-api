@@ -57,7 +57,7 @@ export const submitLevel = async (req, res) => {
           'timing.endedAt': new Date()
         }
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!session) return res.status(404).json({ success: false, message: 'Session not found' });

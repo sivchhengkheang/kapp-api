@@ -69,7 +69,7 @@ export const saveGame = async (req, res) => {
           updatedAt: new Date()
         }
       },
-      { upsert: true, new: true, runValidators: true }
+      { upsert: true, returnDocument: 'after', runValidators: true }
     );
 
     const cacheKey = generateKey('link', 'save', String(userId));

@@ -150,7 +150,7 @@ export const updateUserProgress = async (req, res) => {
     const progress = await UserProgress.findOneAndUpdate(
       { userId },
       mongoUpdate,
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
     const finalCompleted = Array.isArray(progress.completedLevelIds)

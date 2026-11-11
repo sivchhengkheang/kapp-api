@@ -68,7 +68,7 @@ export const submitBossBattle = async (req, res) => {
           'attempts.endedAt': new Date()
         }
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!battle) return res.status(404).json({ success: false, message: 'Battle not found' });
